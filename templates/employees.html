@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block title %}Gestión de Empleados - Sistema de Asistencia QR{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-12">
+        <h1 class="mb-4">
+            <i class="fas fa-users"></i> Gestión de Empleados
+        </h1>
+        <a href="{{ url_for('add_employee') }}" class="btn btn-primary mb-3">
+            <i class="fas fa-user-plus"></i> Añadir Nuevo Empleado
+        </a>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>ID Empleado</th>
+                                <th>Nombre</th>
+                                <th>Departamento</th>
+                                <th>Cargo</th>
+                                <th>QR Code</th>
+                                <th>Estado</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for employee in employees %}
+                            <tr>
+                                <td><strong>{{ employee.employee_id }}</strong></td>
+                                <td>{{ employee.full_name }}</td>
+                                <td>{{ employee.department }}</td>
+                                <td>{{ employee.position }}</td>
+                                <td>
+                                    {% if employee.qr_code %}
+                                        <img src="{{ url_for('static', filename=employee.qr_code) }}" alt="QR Code" width="50" class="img-thumbnail">
+                                        <br>
+                                        <a href="{{ url_for('static', filename=employee.qr_code) }}" download="{{ employee.employee_id }}_qr.png" class="btn btn-sm btn-outline-primary mt-1">
+                                            <i class="fas fa-download"></i> Descargar
+                                        </a>
+                                    {% else %}
+                                        <span class="text-muted">No generado</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if employee.is_active %}
+                                        <span class="badge badge-success">Activo</span>
+                                    {% else %}
+                                        <span class="badge badge-secondary">Inactivo</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <a href="#" class="btn btn-sm btn-info">
+                                        <i class="fas fa-edit"></i> Editar
+                                    </a>
+                                    <a href="#" class="btn btn-sm btn-danger">
+                                        <i class="fas fa-trash"></i> Eliminar
+                                    </a>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="7" class="text-center text-muted">No hay empleados registrados</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

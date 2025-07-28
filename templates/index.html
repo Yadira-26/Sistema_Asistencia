@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Sistema de Asistencia QR{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-12">
+        <h1 class="mb-4">
+            <i class="fas fa-tachometer-alt"></i> Dashboard del Sistema
+        </h1>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card stats-card">
+            <div class="card-body text-center">
+                <i class="fas fa-users fa-2x mb-2"></i>
+                <h4>{{ total_employees }}</h4>
+                <p class="mb-0">Empleados Activos</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-success text-white">
+            <div class="card-body text-center">
+                <i class="fas fa-clock fa-2x mb-2"></i>
+                <h4>{{ today_attendance }}</h4>
+                <p class="mb-0">Asistencias Hoy</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-warning text-white">
+            <div class="card-body text-center">
+                <i class="fas fa-exclamation-triangle fa-2x mb-2"></i>
+                <h4>{{ late_arrivals }}</h4>
+                <p class="mb-0">Llegadas Tardías</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-info text-white">
+            <div class="card-body text-center">
+                <i class="fas fa-percentage fa-2x mb-2"></i>
+                <h4>{{ attendance_rate }}%</h4>
+                <p class="mb-0">Tasa de Asistencia</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-list"></i> Acciones Rápidas</h5>
+            </div>
+            <div class="card-body">
+                <div class="list-group list-group-flush">
+                    <a href="{{ url_for('add_employee') }}" class="list-group-item list-group-item-action">
+                        <i class="fas fa-user-plus"></i> Añadir Nuevo Empleado
+                    </a>
+                    <a href="{{ url_for('scanner') }}" class="list-group-item list-group-item-action">
+                        <i class="fas fa-qrcode"></i> Escanear Código QR
+                    </a>
+                    <a href="{{ url_for('reports') }}" class="list-group-item list-group-item-action">
+                        <i class="fas fa-file-alt"></i> Generar Reporte
+                    </a>
+                    <a href="{{ url_for('employees') }}" class="list-group-item list-group-item-action">
+                        <i class="fas fa-users"></i> Gestionar Empleados
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-clock"></i> Últimas Asistencias</h5>
+            </div>
+            <div class="card-body">
+                {% if recent_attendances %}
+                    {% for attendance in recent_attendances %}
+                    <div class="card attendance-card mb-2">
+                        <div class="card-body py-2">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <strong>{{ attendance.employee.full_name }}</strong>
+                                    <br>
+                                    <small class="text-muted">{{ attendance.employee.department }}</small>
+                                </div>
+                                <div class="text-right">
+                                    {% if attendance.attendance_type == 'entrada' %}
+                                        <span class="badge {% if attendance.is_late %}badge-danger{% else %}badge-success{% endif %}">
+                                            {{ attendance.attendance_type.title() }}
+                                        </span>
+                                    {% else %}
+                                        <span class="badge badge-info">
+                                            {{ attendance.attendance_type.title() }}
+                                        </span>
+                                    {% endif %}
+                                    <br>
+                                    <small class="text-muted">{{ attendance.timestamp.strftime('%H:%M') }}</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <p class="text-muted">No hay registros de asistencia recientes.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
