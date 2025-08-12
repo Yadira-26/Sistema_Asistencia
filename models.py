@@ -1,8 +1,24 @@
+
 from datetime import datetime
 from flask_sqlalchemy import SQLAlchemy
 from extensions import db
+from werkzeug.security import generate_password_hash, check_password_hash
 
-db = SQLAlchemy()
+# Modelo para usuarios administrativos
+class AdminUser(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(50), unique=True, nullable=False)
+    password_hash = db.Column(db.String(128), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
+
+    def __repr__(self):
+        return f'<AdminUser {self.username}>'
 
 class Employee(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -17,8 +33,8 @@ class Employee(db.Model):
     qr_code = db.Column(db.String(255), nullable=True)  # Ruta del archivo QR
     is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    latitude = db.Column(db.Float, nullable=True)
-    longitude = db.Column(db.Float, nullable=True)
+    # Reconocimiento facial
+    # ...eliminado reconocimiento facial...
     
     # Relación con asistencias
     attendances = db.relationship('Attendance', backref='employee', lazy=True)
@@ -38,6 +54,9 @@ class Attendance(db.Model):
     date = db.Column(db.Date, default=datetime.utcnow().date())
     notes = db.Column(db.Text, nullable=True)
     is_late = db.Column(db.Boolean, default=False)  # True si la entrada fue tarde
+    latitude = db.Column(db.Float, nullable=True)
+    longitude = db.Column(db.Float, nullable=True)
+    address = db.Column(db.String(255), nullable=True)  # Dirección legible
     
     def __repr__(self):
         return f'<Attendance {self.employee_id}: {self.attendance_type} at {self.timestamp}>'

@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Gestión Administrativa{% endblock %}
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5>Agregar Nuevo Administrador</h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="{{ url_for('add_admin') }}">
+                        <div class="form-group">
+                            <label for="admin-username">Nombre de usuario</label>
+                            <input type="text" class="form-control" id="admin-username" name="username" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="admin-password">Contraseña</label>
+                            <input type="password" class="form-control" id="admin-password" name="password" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Agregar Administrador</button>
+                    </form>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-header">
+                    <h5>Lista de Administradores</h5>
+                </div>
+                <div class="card-body p-0">
+                    <table class="table table-striped mb-0">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Nombre de usuario</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for admin in admins %}
+                            <tr>
+                                <td>{{ loop.index }}</td>
+                                <td>{{ admin.username }}</td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="2" class="text-center">No hay administradores registrados.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

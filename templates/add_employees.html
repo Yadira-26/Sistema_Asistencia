@@ -11,6 +11,25 @@
             </div>
             <div class="card-body">
                 <form method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <form method="POST" enctype="multipart/form-data">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                    <!-- Campo de foto de rostro eliminado -->
+                                <label for="start_time">Hora de Entrada (permitida):</label>
+                                <input type="time" class="form-control" id="start_time" name="start_time" min="06:00" max="12:00" value="08:00" required>
+                                <small class="form-text text-muted">Ejemplo: 06:00 a 12:00</small>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label for="end_time">Hora de Salida (referencial):</label>
+                                <input type="time" class="form-control" id="end_time" name="end_time" min="12:00" max="23:59" value="17:00" required>
+                                <small class="form-text text-muted">Ejemplo: 12:00 a 23:59</small>
+                            </div>
+                        </div>
+                    </div>
                     <div class="row">
                         <div class="col-md-6">
                             <div class="form-group">

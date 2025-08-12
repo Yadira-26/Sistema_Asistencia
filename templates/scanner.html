@@ -2,12 +2,18 @@
 
 {% block title %}Escáner QR - Sistema de Asistencia QR{% endblock %}
 
+
 {% block content %}
 <div class="row">
     <div class="col-md-8 mx-auto">
+        <!-- Notificación global para el usuario -->
+        <div id="scan-result" class="alert" style="display: none; position:relative;"></div>
         <div class="card">
-            <div class="card-header">
+            <div class="card-header d-flex justify-content-between align-items-center">
                 <h4><i class="fas fa-qrcode"></i> Escáner de Códigos QR</h4>
+                {% if not session.admin_user_id %}
+                <a href="{{ url_for('login') }}" class="btn btn-outline-primary btn-sm">Iniciar Sesión Admin</a>
+                {% endif %}
             </div>
             <div class="card-body">
                 <div class="qr-scanner">
@@ -15,7 +21,6 @@
                         <video id="video" width="100%" height="300" style="border: 2px solid #007bff; border-radius: 8px;"></video>
                         <canvas id="canvas" style="display: none;"></canvas>
                     </div>
-                    
                     <div class="text-center mb-3">
                         <button id="start-scan" class="btn btn-success">
                             <i class="fas fa-play"></i> Iniciar Escáner
@@ -24,9 +29,6 @@
                             <i class="fas fa-stop"></i> Detener Escáner
                         </button>
                     </div>
-                    
-                    <div id="scan-result" class="alert" style="display: none;"></div>
-                    
                     <div class="card mt-4">
                         <div class="card-header">
                             <h6><i class="fas fa-keyboard"></i> Entrada Manual</h6>
@@ -96,24 +98,87 @@
 {% block scripts %}
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 <script>
+function showResult(message, type = 'info', isLate = false, attendanceType = '') {
+    let resultDiv = document.getElementById('scan-result');
+    if (!resultDiv) {
+        // Si no existe, lo creamos dinámicamente en el body
+        resultDiv = document.createElement('div');
+        resultDiv.id = 'scan-result';
+        resultDiv.className = 'alert';
+        resultDiv.style.position = 'fixed';
+        resultDiv.style.top = '30px';
+        resultDiv.style.left = '50%';
+        resultDiv.style.transform = 'translateX(-50%)';
+        resultDiv.style.zIndex = '9999';
+        document.body.appendChild(resultDiv);
+    }
+    console.log('[DEBUG] showResult llamada:', message, type, isLate, attendanceType);
+    resultDiv.style.display = 'block';
+    let alertClass = 'alert-info';
+    // Si el mensaje es el de asistencia repetida, forzar success
+    if (message.includes('No puedes volver a marcar otra vez asistencia porque ya se marcó para hoy')) {
+        alertClass = 'alert-success';
+    } else {
+        if (type === 'success') alertClass = 'alert-success';
+        if (type === 'danger') alertClass = 'alert-danger';
+        if (type === 'warning') alertClass = 'alert-warning';
+    }
+    // Usar las mismas clases que en base.html
+    resultDiv.className = `alert ${alertClass} alert-dismissible fade show`;
+    // Quitar estilos personalizados para que use solo Bootstrap
+    resultDiv.style.border = '';
+    resultDiv.style.background = '';
+    let extra = '';
+    if (attendanceType) {
+        extra += `<br><strong>Tipo:</strong> ${attendanceType}`;
+    }
+    if (isLate) {
+        extra += ' <span class="badge badge-danger">Tarde</span>';
+    }
+    // Renderizar el botón de cerrar junto con el mensaje
+    resultDiv.innerHTML = `
+        <button type="button" id="close-scan-result" class="close" style="position:absolute;top:8px;right:12px;z-index:2;" aria-label="Cerrar">
+            <span aria-hidden="true">&times;</span>
+        </button>
+        ${message + extra}
+    `;
+    setTimeout(() => {
+        resultDiv.style.display = 'none';
+    }, 2000);
+    // Asignar evento al botón de cerrar
+    const closeBtn = document.getElementById('close-scan-result');
+    if (closeBtn) {
+        closeBtn.onclick = function() {
+            resultDiv.style.display = 'none';
+        };
+    }
+}
+
 let video = document.getElementById('video');
 let canvas = document.getElementById('canvas');
 let context = canvas.getContext('2d');
 let scanning = false;
+let lastScanned = null;
+let scanCooldown = false;
+let scanInterval = null;
 
 document.getElementById('start-scan').addEventListener('click', startScanning);
 document.getElementById('stop-scan').addEventListener('click', stopScanning);
 document.getElementById('manual-form').addEventListener('submit', handleManualEntry);
 
 function startScanning() {
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+    startCamera();
+}
+
+function startCamera() {
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } })
         .then(function(stream) {
             video.srcObject = stream;
             video.play();
             scanning = true;
             document.getElementById('start-scan').style.display = 'none';
             document.getElementById('stop-scan').style.display = 'inline-block';
-            requestAnimationFrame(tick);
+            scanInterval = setInterval(tick, 100);
         })
         .catch(function(err) {
             console.error('Error accessing camera:', err);
@@ -123,6 +188,10 @@ function startScanning() {
 
 function stopScanning() {
     scanning = false;
+    if (scanInterval) {
+        clearInterval(scanInterval);
+        scanInterval = null;
+    }
     if (video.srcObject) {
         video.srcObject.getTracks().forEach(track => track.stop());
     }
@@ -135,86 +204,93 @@ function tick() {
         canvas.height = video.videoHeight;
         canvas.width = video.videoWidth;
         context.drawImage(video, 0, 0, canvas.width, canvas.height);
-        
         let imageData = context.getImageData(0, 0, canvas.width, canvas.height);
         let code = jsQR(imageData.data, imageData.width, imageData.height);
-        
-        if (code) {
+        if (code && !scanCooldown && code.data !== lastScanned) {
+            lastScanned = code.data;
+            scanCooldown = true;
             processQRCode(code.data);
-            // stopScanning(); // Ahora la cámara sigue encendida
+            setTimeout(() => { scanCooldown = false; }, 2000);
         }
-    }
-    
-    if (scanning) {
-        requestAnimationFrame(tick);
     }
 }
 
 function processQRCode(data) {
+    // Mostrar notificación instantánea
+    showResult('Registrando asistencia...', 'info');
     registerAttendance(data);
 }
 
 function handleManualEntry(e) {
     e.preventDefault();
     let employeeId = document.getElementById('manual-input').value.trim();
-    if (employeeId) {
-        registerAttendance(employeeId);
-        document.getElementById('manual-input').value = '';
+    if (!employeeId) {
+        showResult('Por favor ingrese un ID de empleado.', 'warning');
+        return;
     }
+    // Mostrar notificación instantánea
+    showResult('Registrando asistencia...', 'info');
+    registerAttendance(employeeId);
+    document.getElementById('manual-input').value = '';
 }
 
 function registerAttendance(employeeId) {
+    // Enviar el ID
+    sendAttendance(employeeId);
+}
+
+function sendAttendance(employeeId) {
+    // Siempre intentar registrar asistencia, con o sin geolocalización
+    let payload = { employee_id: employeeId };
     if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(function(position) {
-            sendAttendance(employeeId, position.coords.latitude, position.coords.longitude);
-        }, function(error) {
-            // Si el usuario no permite la ubicación, envía sin coordenadas
-            sendAttendance(employeeId, null, null);
+            payload.latitude = position.coords.latitude;
+            payload.longitude = position.coords.longitude;
+            fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${payload.latitude}&lon=${payload.longitude}`)
+                .then(response => response.json())
+                .then(data => {
+                    payload.address = data.display_name || '';
+                    sendAttendanceRequest(payload);
+                })
+                .catch(() => {
+                    sendAttendanceRequest(payload);
+                });
+        }, function() {
+            sendAttendanceRequest(payload);
         });
     } else {
-        sendAttendance(employeeId, null, null);
+        sendAttendanceRequest(payload);
     }
 }
 
-function sendAttendance(employeeId, latitude, longitude) {
+function sendAttendanceRequest(payload) {
     fetch('/register_attendance', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ employee_id: employeeId, latitude: latitude, longitude: longitude })
+        body: JSON.stringify(payload)
     })
     .then(response => response.json())
     .then(data => {
+        console.log('[DEBUG] Respuesta de /register_attendance:', data);
         if (data.success) {
             showResult(data.message, 'success', data.is_late, data.attendance_type);
             setTimeout(() => {
-                location.reload();
+                lastScanned = null;
             }, 2000);
         } else {
-            showResult(data.message, 'danger', false, '');
+            let type = 'danger';
+            if (data.message && (data.message.includes('No puedes volver a marcar otra vez asistencia') || data.message.includes('ya se marcó para hoy'))) {
+                type = 'warning';
+            }
+            showResult(data.message, type, false, '');
         }
     })
     .catch(error => {
         console.error('Error:', error);
         showResult('Error al registrar asistencia', 'danger', false, '');
     });
-}
-}
-
-function showResult(message, type) {
-    let resultDiv = document.getElementById('scan-result');
-    // Si es entrada y tarde, mostrar en rojo
-    if (arguments.length > 2 && arguments[3] === 'entrada' && arguments[2]) {
-        resultDiv.className = 'alert alert-danger';
-    } else {
-        resultDiv.className = `alert alert-${type}`;
-    }
-    resultDiv.textContent = message;
-    resultDiv.style.display = 'block';
-    setTimeout(() => {
-        resultDiv.style.display = 'none';
-    }, 5000);
 }
 </script>
 {% endblock %}

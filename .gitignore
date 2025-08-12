@@ -1,0 +1,17 @@
+# Archivos Python
+__pycache__/
+*.py[cod]
+*.class
+venv/
+venv311/
+.venv/
+instance/
+*.db
+.env
+*.log
+.DS_Store
+Thumbs.db
+debug_*.py
+fix_*.py
+static/reporte_*.pdf
+static/reporte_*.xlsx

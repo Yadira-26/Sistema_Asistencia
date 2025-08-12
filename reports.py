@@ -1,6 +1,9 @@
+import matplotlib
+matplotlib.use('Agg')
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
+import matplotlib.ticker as mticker
 from datetime import datetime, date, timedelta
 from reportlab.lib.pagesizes import letter, A4
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
@@ -10,6 +13,62 @@ from reportlab.lib import colors
 import io
 import base64
 from models import Employee, Attendance, db
+
+def summarize_hours_worked(df):
+    if df.empty:
+        return pd.DataFrame()
+    employee_summary = []
+    for employee_id in df['employee_id'].unique():
+        emp_data = df[df['employee_id'] == employee_id].sort_values('timestamp')
+        entradas = emp_data[emp_data['attendance_type'] == 'entrada']['timestamp'].tolist()
+        salidas = emp_data[emp_data['attendance_type'] == 'salida']['timestamp'].tolist()
+        total_seconds = 0
+        used_salidas = set()
+        for entrada_time in entradas:
+            salida_time = None
+            for idx, s in enumerate(salidas):
+                if s > entrada_time and idx not in used_salidas:
+                    salida_time = s
+                    used_salidas.add(idx)
+                    break
+            if entrada_time and salida_time:
+                total_seconds += int((salida_time - entrada_time).total_seconds())
+        # Solo mostrar horas si hay al menos una salida válida
+        if total_seconds > 0:
+            horas = total_seconds // 3600
+            minutos = (total_seconds % 3600) // 60
+            segundos = total_seconds % 60
+            horas_str = []
+            if horas > 0:
+                horas_str.append(f"{horas} hora{'s' if horas != 1 else ''}")
+            if minutos > 0:
+                horas_str.append(f"{minutos} minuto{'s' if minutos != 1 else ''}")
+            if segundos > 0:
+                horas_str.append(f"{segundos} segundo{'s' if segundos != 1 else ''}")
+            horas_legible = ', '.join(horas_str)
+        else:
+            horas_legible = 'N/A'
+        entrada_time = entradas[0] if entradas else None
+        # Salida solo si hay alguna salida válida
+        salida_time = None
+        for s in reversed(salidas):
+            if entradas and s > entradas[0]:
+                salida_time = s
+                break
+        address = emp_data[emp_data['attendance_type'] == 'entrada']['address'].iloc[0] if not emp_data[emp_data['attendance_type'] == 'entrada'].empty and 'address' in emp_data else ''
+        # Obtener el ID de la primera entrada para referencia
+        attendance_id = emp_data[emp_data['attendance_type'] == 'entrada']['attendance_id'].iloc[0] if not emp_data[emp_data['attendance_type'] == 'entrada'].empty and 'attendance_id' in emp_data else None
+        employee_summary.append({
+            'ID': employee_id,
+            'Nombre': emp_data['employee_name'].iloc[0],
+            'Departamento': emp_data['department'].iloc[0],
+            'Entrada': entrada_time.strftime('%H:%M:%S') if entrada_time else 'No registrada',
+            'Salida': salida_time.strftime('%H:%M:%S') if salida_time else 'No registrada',
+            'Horas Trabajadas': horas_legible,
+            'Dirección': address,
+            'attendance_id': attendance_id  # ID para edición
+        })
+    return pd.DataFrame(employee_summary)
 
 def get_attendance_data(start_date=None, end_date=None, employee_id=None):
     """
@@ -29,17 +88,140 @@ def get_attendance_data(start_date=None, end_date=None, employee_id=None):
     data = []
     for attendance in attendances:
         data.append({
+            'attendance_id': attendance.id,  # Incluir ID de asistencia
             'employee_id': attendance.employee_id,
             'employee_name': attendance.employee.full_name,
             'department': attendance.employee.department,
             'date': attendance.date,
             'timestamp': attendance.timestamp,
             'attendance_type': attendance.attendance_type,
-            'latitude': getattr(attendance, 'latitude', None),
-            'longitude': getattr(attendance, 'longitude', None)
+            'address': getattr(attendance, 'address', '')
         })
     
     return pd.DataFrame(data)
+
+def generate_individual_report(start_date, end_date, employee_id):
+    """
+    Genera un reporte individual mostrando cada día por separado.
+    """
+    df = get_attendance_data(start_date=start_date, end_date=end_date, employee_id=employee_id)
+    
+    if df.empty:
+        return None, f"No hay datos de asistencia para el empleado {employee_id} en el período seleccionado."
+    
+    # Agrupar por fecha para mostrar cada día
+    employee_summary = []
+    
+    # Obtener todas las fechas únicas en el período
+    for target_date in df['date'].unique():
+        day_data = df[df['date'] == target_date]
+        
+        entrada = day_data[day_data['attendance_type'] == 'entrada']
+        salida = day_data[day_data['attendance_type'] == 'salida']
+        
+        fecha_str = target_date.strftime('%d/%m/%Y')
+        entrada_time = entrada['timestamp'].iloc[0] if not entrada.empty else None
+        salida_time = salida['timestamp'].iloc[-1] if not salida.empty else None
+        
+        # Calcular horas trabajadas
+        hours_worked = 0
+        if entrada_time and salida_time:
+            hours_worked = (salida_time - entrada_time).total_seconds()
+            horas = int(hours_worked // 3600)
+            minutos = int((hours_worked % 3600) // 60)
+            segundos = int(hours_worked % 60)
+            
+            horas_str = []
+            if horas > 0:
+                horas_str.append(f"{horas} hora{'s' if horas != 1 else ''}")
+            if minutos > 0:
+                horas_str.append(f"{minutos} minuto{'s' if minutos != 1 else ''}")
+            if segundos > 0:
+                horas_str.append(f"{segundos} segundo{'s' if segundos != 1 else ''}")
+            horas_legible = ', '.join(horas_str) if horas_str else '0 segundos'
+        else:
+            horas_legible = 'N/A'
+        
+        # Obtener información adicional
+        address = entrada['address'].iloc[0] if not entrada.empty and 'address' in entrada else ''
+        attendance_id = entrada['attendance_id'].iloc[0] if not entrada.empty and 'attendance_id' in entrada else None
+        
+        employee_summary.append({
+            'attendance_id': attendance_id,
+            'Fecha': fecha_str,
+            'ID': employee_id,
+            'Nombre': day_data['employee_name'].iloc[0],
+            'Departamento': day_data['department'].iloc[0],
+            'Entrada': entrada_time.strftime('%H:%M:%S') if entrada_time else 'No registrada',
+            'Salida': salida_time.strftime('%H:%M:%S') if salida_time else 'No registrada',
+            'Horas Trabajadas': horas_legible,
+            'Dirección': address
+        })
+    
+    # Ordenar por fecha
+    employee_summary = sorted(employee_summary, key=lambda x: x['Fecha'])
+    
+    return pd.DataFrame(employee_summary), None
+
+def generate_general_detailed_report(start_date, end_date):
+    """
+    Genera un reporte general detallado mostrando todas las asistencias día por día de todos los empleados.
+    """
+    df = get_attendance_data(start_date=start_date, end_date=end_date)
+    
+    if df.empty:
+        return None, f"No hay datos de asistencia en el período seleccionado."
+    
+    # Agrupar por empleado y fecha para mostrar cada día
+    all_attendances = []
+    
+    # Obtener todas las combinaciones únicas de empleado y fecha
+    for (employee_id, target_date), group in df.groupby(['employee_id', 'date']):
+        entrada = group[group['attendance_type'] == 'entrada']
+        salida = group[group['attendance_type'] == 'salida']
+        
+        fecha_str = target_date.strftime('%d/%m/%Y')
+        entrada_time = entrada['timestamp'].iloc[0] if not entrada.empty else None
+        salida_time = salida['timestamp'].iloc[-1] if not salida.empty else None
+        
+        # Calcular horas trabajadas
+        if entrada_time and salida_time:
+            hours_worked = (salida_time - entrada_time).total_seconds()
+            horas = int(hours_worked // 3600)
+            minutos = int((hours_worked % 3600) // 60)
+            segundos = int(hours_worked % 60)
+            
+            horas_str = []
+            if horas > 0:
+                horas_str.append(f"{horas} hora{'s' if horas != 1 else ''}")
+            if minutos > 0:
+                horas_str.append(f"{minutos} minuto{'s' if minutos != 1 else ''}")
+            if segundos > 0:
+                horas_str.append(f"{segundos} segundo{'s' if segundos != 1 else ''}")
+            horas_legible = ', '.join(horas_str) if horas_str else '0 segundos'
+        else:
+            horas_legible = 'N/A'
+        
+        # Obtener información adicional
+        address = entrada['address'].iloc[0] if not entrada.empty and 'address' in entrada else ''
+        attendance_id = entrada['attendance_id'].iloc[0] if not entrada.empty and 'attendance_id' in entrada else None
+        
+        all_attendances.append({
+            'attendance_id': attendance_id,
+            'Fecha': fecha_str,
+            'ID': employee_id,
+            'Nombre': group['employee_name'].iloc[0],
+            'Departamento': group['department'].iloc[0],
+            'Entrada': entrada_time.strftime('%H:%M:%S') if entrada_time else 'No registrada',
+            'Salida': salida_time.strftime('%H:%M:%S') if salida_time else 'No registrada',
+            'Horas Trabajadas': horas_legible,
+            'Dirección': address
+        })
+    
+    # Ordenar por fecha y luego por empleado
+    all_attendances = sorted(all_attendances, key=lambda x: (x['Fecha'], x['ID']))
+    
+    return pd.DataFrame(all_attendances), None
 
 def generate_daily_report(target_date=None):
     """
@@ -71,12 +253,16 @@ def generate_daily_report(target_date=None):
         if entrada_time and salida_time:
             hours_worked = (salida_time - entrada_time).total_seconds() / 3600
         
-        # Obtener latitud y longitud de la primera entrada (si existe)
+        # Obtener latitud, longitud y dirección de la primera entrada (si existe)
         lat = entrada['latitude'].iloc[0] if not entrada.empty and 'latitude' in entrada else None
         lon = entrada['longitude'].iloc[0] if not entrada.empty and 'longitude' in entrada else None
+        address = entrada['address'].iloc[0] if not entrada.empty and 'address' in entrada else ''
+        # Obtener el ID de la primera entrada para referencia
+        attendance_id = entrada['attendance_id'].iloc[0] if not entrada.empty and 'attendance_id' in entrada else None
         lat_str = f"{lat:.6f}" if lat is not None else "-"
         lon_str = f"{lon:.6f}" if lon is not None else "-"
         employee_summary.append({
+            'attendance_id': attendance_id,  # ID para edición
             'ID': employee_id,
             'Nombre': emp_data['employee_name'].iloc[0],
             'Departamento': emp_data['department'].iloc[0],
@@ -84,7 +270,8 @@ def generate_daily_report(target_date=None):
             'Salida': salida_time.strftime('%H:%M:%S') if salida_time else 'No registrada',
             'Horas Trabajadas': f"{hours_worked:.2f}" if hours_worked > 0 else 'N/A',
             'Latitud': lat_str,
-            'Longitud': lon_str
+            'Longitud': lon_str,
+            'Dirección': address
         })
     
     return pd.DataFrame(employee_summary), None
@@ -108,11 +295,11 @@ def generate_attendance_chart(start_date, end_date):
     plt.ylabel('Número de Registros', fontsize=12)
     plt.grid(True, alpha=0.3)
     plt.xticks(rotation=45)
-    
+
     # Formatear fechas en el eje X
     plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%d/%m/%Y'))
-    plt.gca().xaxis.set_major_locator(mdates.DayLocator(interval=1))
-    
+    plt.gca().xaxis.set_major_locator(mticker.MaxNLocator(nbins=15))
+
     plt.tight_layout()
     
     # Guardar en memoria
@@ -185,74 +372,5 @@ def generate_pdf_report(start_date, end_date, filename):
     # Resumen estadístico
     df = get_attendance_data(start_date=start_date, end_date=end_date)
     
-    if not df.empty:
-        total_records = len(df)
-        unique_employees = df['employee_id'].nunique()
-        departments = df['department'].nunique()
-        
-        summary_data = [
-            ['Métrica', 'Valor'],
-            ['Total de Registros', str(total_records)],
-            ['Empleados Únicos', str(unique_employees)],
-            ['Departamentos', str(departments)],
-            ['Período', f"{start_date.strftime('%d/%m/%Y')} - {end_date.strftime('%d/%m/%Y')}"]
-        ]
-        
-        summary_table = Table(summary_data)
-        summary_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 14),
-            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-            ('GRID', (0, 0), (-1, -1), 1, colors.black)
-        ]))
-        
-        story.append(Paragraph("Resumen Estadístico", styles['Heading2']))
-        story.append(summary_table)
-        story.append(Spacer(1, 20))
-        
-        # Tabla de asistencia detallada
-        story.append(Paragraph("Detalle de Asistencias", styles['Heading2']))
-        
-        # Preparar datos para la tabla
-        table_data = [['ID Empleado', 'Nombre', 'Departamento', 'Fecha', 'Hora', 'Tipo', 'Latitud', 'Longitud']]
-
-        for _, row in df.iterrows():
-            # Manejar posibles valores nulos
-            lat = getattr(row, 'latitude', None)
-            lon = getattr(row, 'longitude', None)
-            lat_str = f"{lat:.6f}" if lat is not None else "-"
-            lon_str = f"{lon:.6f}" if lon is not None else "-"
-            table_data.append([
-                row['employee_id'],
-                row['employee_name'],
-                row['department'],
-                row['date'].strftime('%d/%m/%Y'),
-                row['timestamp'].strftime('%H:%M:%S'),
-                row['attendance_type'].title(),
-                lat_str,
-                lon_str
-            ])
-
-        detail_table = Table(table_data)
-        detail_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 10),
-            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-            ('GRID', (0, 0), (-1, -1), 1, colors.black),
-            ('FONTSIZE', (0, 1), (-1, -1), 8),
-        ]))
-
-        story.append(detail_table)
-    else:
-        story.append(Paragraph("No hay datos de asistencia para el período seleccionado.", styles['Normal']))
-    
-    doc.build(story)
-    return filename
+    summary = summarize_hours_worked(df)
+    return summary, None

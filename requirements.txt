@@ -1,0 +1,10 @@
+flask
+flask_sqlalchemy
+flask_migrate
+qrcode
+pandas
+matplotlib
+reportlab
+werkzeug
+flask-limiter
+flask-talisman
